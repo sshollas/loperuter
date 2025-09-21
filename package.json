@@ -9,7 +9,8 @@
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:local-graph": "tsx scripts/buildLocalGraph.ts"
   },
   "dependencies": {
     "@mapbox/polyline": "^1.2.1",

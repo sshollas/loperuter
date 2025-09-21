@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { clampDistance, elevationAtDistance } from "@/lib/elevation/profile";
 
 interface Point {
   distance: number;
@@ -9,6 +10,8 @@ interface Point {
 
 interface ElevationChartProps {
   profile?: Point[];
+  activeDistance?: number;
+  onScrub?: (distanceMeters: number) => void;
 }
 
 function formatDistance(meters: number) {
@@ -20,7 +23,10 @@ function formatDistance(meters: number) {
   return `${Math.round(meters)} m`;
 }
 
-export function ElevationChart({ profile }: ElevationChartProps) {
+export function ElevationChart({ profile, activeDistance, onScrub }: ElevationChartProps) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
   const chart = useMemo(() => {
     if (!profile || profile.length === 0) return null;
     const distances = profile.map((p) => p.distance);
@@ -68,6 +74,7 @@ export function ElevationChart({ profile }: ElevationChartProps) {
       maxElev,
       xTicks,
       yTicks,
+      normalizeElevation,
     };
   }, [profile]);
 
@@ -84,6 +91,61 @@ export function ElevationChart({ profile }: ElevationChartProps) {
     }
     return { gain, loss };
   }, [profile]);
+
+  const highlight = useMemo(() => {
+    if (!chart || !profile || profile.length === 0) {
+      return null;
+    }
+    if (activeDistance == null || !Number.isFinite(activeDistance)) {
+      return null;
+    }
+    const clamped = clampDistance(profile, activeDistance);
+    const elevation = elevationAtDistance(profile, clamped);
+    const x = chart.totalDist > 0 ? (clamped / chart.totalDist) * 100 : 0;
+    const y =
+      elevation != null && Number.isFinite(elevation)
+        ? 100 - chart.normalizeElevation(elevation)
+        : undefined;
+    return { x, y, elevation, distance: clamped };
+  }, [activeDistance, chart, profile]);
+
+  const handlePointer = (event: PointerEvent<SVGSVGElement>) => {
+    if (!onScrub || !chart || !svgRef.current) {
+      return;
+    }
+    const rect = svgRef.current.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
+    if (!Number.isFinite(ratio)) {
+      return;
+    }
+    const clamped = Math.min(Math.max(ratio, 0), 1);
+    const nextDistance = clamped * chart.totalDist;
+    onScrub(nextDistance);
+  };
+
+  const onPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    setDragging(true);
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    handlePointer(event);
+  };
+
+  const onPointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (!dragging) {
+      return;
+    }
+    handlePointer(event);
+  };
+
+  const endInteraction = (event: PointerEvent<SVGSVGElement>) => {
+    if (dragging) {
+      setDragging(false);
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   if (!profile || profile.length === 0 || !chart) {
     return (
@@ -103,7 +165,15 @@ export function ElevationChart({ profile }: ElevationChartProps) {
         <span>Opp: {Math.round(totals.gain)} m • Ned: {Math.round(totals.loss)} m</span>
         <span>Snittstigning: {averageGrade.toFixed(1)} %</span>
       </div>
-      <svg viewBox="0 0 100 100" className="mt-3 h-36 w-full">
+      <svg
+        ref={svgRef}
+        viewBox="0 0 100 100"
+        className="mt-3 h-36 w-full touch-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endInteraction}
+        onPointerLeave={endInteraction}
+      >
         <defs>
           <linearGradient id="elevation-fill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgba(37, 99, 235, 0.55)" />
@@ -140,6 +210,29 @@ export function ElevationChart({ profile }: ElevationChartProps) {
             </text>
           </g>
         ))}
+        {highlight && (
+          <g>
+            <line
+              x1={highlight.x}
+              x2={highlight.x}
+              y1={0}
+              y2={100}
+              stroke="rgba(37, 99, 235, 0.45)"
+              strokeWidth={0.6}
+              strokeDasharray="1.5 1.5"
+            />
+            {highlight.y != null && Number.isFinite(highlight.y) && (
+              <circle
+                cx={highlight.x}
+                cy={highlight.y}
+                r={1.6}
+                fill="#2563eb"
+                stroke="#ffffff"
+                strokeWidth={0.6}
+              />
+            )}
+          </g>
+        )}
         <polygon points={chart.path} fill="url(#elevation-fill)" stroke="rgba(37, 99, 235, 0.8)" strokeWidth={0.8} />
       </svg>
     </div>

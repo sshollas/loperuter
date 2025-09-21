@@ -85,6 +85,9 @@ export class OsrmRoutingProvider implements RoutingProvider {
     url.searchParams.set("geometries", "polyline");
     url.searchParams.set("steps", "true");
     url.searchParams.set("annotations", "distance,duration");
+    if (this.profile === "foot") {
+      url.searchParams.set("exclude", "motorway");
+    }
 
     const response = await axios.get(url.toString(), {
       headers: {

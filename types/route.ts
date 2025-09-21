@@ -4,6 +4,7 @@ export interface RouteRequestBase {
   preferElevation?: "min" | "max" | "balanced";
   targetDistanceMeters: number;
   distanceToleranceMeters?: number;
+  avoidRevisiting?: boolean;
 }
 
 export interface RoundTripRequest extends RouteRequestBase {
@@ -28,6 +29,7 @@ export interface RouteAlternative {
   kilometerMarkers?: RouteKilometerMarker[];
   segments?: RouteSegment[];
   providerMeta?: unknown;
+  revisitFraction?: number;
 }
 
 export interface RouteResponse {

@@ -26,6 +26,7 @@ import type {
   RouteKilometerMarker,
   RouteSegment,
 } from "@/types/route";
+import { LocalRoutingProvider } from "./providers/local";
 import { MockRoutingProvider } from "./providers/mock";
 import { OrsRoutingProvider } from "./providers/ors";
 import { OsrmRoutingProvider } from "./providers/osrm";
@@ -39,6 +40,9 @@ function createRoutingProvider(): RoutingProvider {
   const provider = process.env.ROUTING_PROVIDER?.toLowerCase() ?? "osrm";
   if (provider === "mock") {
     return new MockRoutingProvider();
+  }
+  if (provider === "local") {
+    return new LocalRoutingProvider();
   }
   if (provider === "ors") {
     const apiKey = process.env.ORS_API_KEY;
@@ -89,6 +93,7 @@ export async function planRoundTrip(
   const { routing, geocoder, elevation } = deps;
   const tolerance = request.distanceToleranceMeters ?? DEFAULT_TOLERANCE;
   const preferElevation = request.preferElevation ?? "balanced";
+  const avoidRevisiting = request.avoidRevisiting ?? false;
   const start = await resolvePoint(request.start, request.startAddress, geocoder);
 
   const target = request.targetDistanceMeters;
@@ -135,9 +140,10 @@ export async function planRoundTrip(
   }
 
   const unique = dedupeRoutes(enriched);
-  const sorted = sortAlternatives(unique, preferElevation, target);
+  const filtered = applyRevisitPreference(unique, avoidRevisiting, notes);
+  const sorted = sortAlternatives(filtered, preferElevation, target);
 
-  const top = sorted.slice(0, 5);
+  const top = sorted.slice(0, 3);
   const focusPoints = top.flatMap((alt) => decodePolyline(alt.polyline));
   const center = centroid(focusPoints);
   const bounds = computeBounds(focusPoints);
@@ -156,6 +162,7 @@ export async function planPointToPoint(
   const { routing, geocoder, elevation } = deps;
   const tolerance = request.distanceToleranceMeters ?? DEFAULT_TOLERANCE;
   const preferElevation = request.preferElevation ?? "balanced";
+  const avoidRevisiting = request.avoidRevisiting ?? false;
   const start = await resolvePoint(request.start, request.startAddress, geocoder);
   const end = await resolvePoint(request.end, request.endAddress, geocoder);
 
@@ -169,6 +176,7 @@ export async function planPointToPoint(
   const baselineDistance = baseline.distanceMeters;
   const target = request.targetDistanceMeters;
   const delta = target - baselineDistance;
+  const notes: string[] = [];
 
   const candidates: RouteCandidate[] = baselineRoutes.map((route, index) => ({
     route,
@@ -188,14 +196,15 @@ export async function planPointToPoint(
 
   const enriched = await enrichCandidates(candidates, elevation);
   const unique = dedupeRoutes(enriched);
-  const sorted = sortAlternatives(unique, preferElevation, target);
-  const top = sorted.slice(0, 5);
+  const filtered = applyRevisitPreference(unique, avoidRevisiting, notes);
+  const sorted = sortAlternatives(filtered, preferElevation, target);
+  const top = sorted.slice(0, 3);
   const focusPoints = top.flatMap((alt) => decodePolyline(alt.polyline));
   return {
     alternatives: top,
     center: centroid(focusPoints),
     bounds: computeBounds(focusPoints),
-    notes: [],
+    notes,
   };
 }
 
@@ -268,6 +277,7 @@ async function enrichCandidates(
     const signature = hashPath(candidate.route.coordinates);
     if (seen.has(signature)) continue;
     seen.add(signature);
+    const revisitFraction = computeRevisitFraction(candidate.route.coordinates);
     const profile = await elevation.getProfile(candidate.route.polyline);
     const totals = elevation.getTotals(profile);
     const annotations = buildRouteAnnotations(
@@ -288,6 +298,7 @@ async function enrichCandidates(
       kilometerMarkers: annotations.markers,
       segments: annotations.segments,
       providerMeta: { kind: candidate.kind, label: candidate.label },
+      revisitFraction,
     };
     enriched.push(alternative);
   }
@@ -303,6 +314,90 @@ function dedupeRoutes(alternatives: RouteAlternative[]): RouteAlternative[] {
     }
   });
   return Array.from(unique.values());
+}
+
+const REVISIT_THRESHOLD = 0.05;
+
+function applyRevisitPreference(
+  alternatives: RouteAlternative[],
+  avoidRevisiting: boolean,
+  notes?: string[],
+): RouteAlternative[] {
+  if (!avoidRevisiting) {
+    return alternatives;
+  }
+
+  const filtered = alternatives.filter((alt) =>
+    (alt.revisitFraction ?? 0) <= REVISIT_THRESHOLD,
+  );
+
+  if (filtered.length === 0) {
+    notes?.push(
+      "Fant ingen helt unike ruter, viser beste alternativer med noe overlapp.",
+    );
+    return alternatives;
+  }
+
+  if (filtered.length < alternatives.length) {
+    notes?.push(
+      `Filtrerte bort ${alternatives.length - filtered.length} ruter som brukte samme strekning to ganger.`,
+    );
+  }
+
+  return filtered;
+}
+
+function computeRevisitFraction(path: { lat: number; lng: number }[]): number {
+  if (path.length < 2) {
+    return 0;
+  }
+
+  let total = 0;
+  const segmentUsage = new Map<string, { count: number; length: number }>();
+
+  for (let i = 1; i < path.length; i += 1) {
+    const start = path[i - 1];
+    const end = path[i];
+    const length = haversineDistance(start, end);
+    total += length;
+    if (length <= 0) {
+      continue;
+    }
+    const key = segmentKey(start, end);
+    const entry = segmentUsage.get(key);
+    if (entry) {
+      entry.count += 1;
+      entry.length += length;
+    } else {
+      segmentUsage.set(key, { count: 1, length });
+    }
+  }
+
+  if (total <= 0) {
+    return 0;
+  }
+
+  let repeated = 0;
+  for (const segment of segmentUsage.values()) {
+    if (segment.count > 1) {
+      repeated += segment.length;
+    }
+  }
+
+  return repeated / total;
+}
+
+function segmentKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }): string {
+  const precision = 1e5;
+  const ax = Math.round(a.lat * precision);
+  const ay = Math.round(a.lng * precision);
+  const bx = Math.round(b.lat * precision);
+  const by = Math.round(b.lng * precision);
+
+  if (ax < bx || (ax === bx && ay <= by)) {
+    return `${ax},${ay}|${bx},${by}`;
+  }
+  return `${bx},${by}|${ax},${ay}`;
 }
 
 function buildRouteAnnotations(
