@@ -73,14 +73,16 @@ export function RouteDetails({ route }: RouteDetailsProps) {
                 <span>Del {index + 1}</span>
                 <span>{formatMeters(segment.lengthMeters)}</span>
               </div>
-              <div className="mt-1 text-sm font-medium text-zinc-700">
-                {formatInstruction(segment)}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {segment.streetName && (
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                    {segment.streetName}
+                  </span>
+                )}
+                <span className="text-sm font-medium text-zinc-700">
+                  {formatInstruction(segment)}
+                </span>
               </div>
-              {segment.streetName && (
-                <div className="text-[11px] text-zinc-500">
-                  {segment.streetName}
-                </div>
-              )}
               <div className="text-[11px] text-zinc-500">
                 {formatRange(segment.startDistanceMeters, segment.endDistanceMeters)}
                 {" "}• {formatMeters(segment.lengthMeters)}

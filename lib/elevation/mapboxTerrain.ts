@@ -1,7 +1,7 @@
 import axios from "axios";
 import pLimit from "p-limit";
 import { decodePolyline } from "@/lib/geo/utils";
-import { interpolateAlongPath } from "@/lib/geo/distance";
+import { haversineDistance, interpolateAlongPath } from "@/lib/geo/distance";
 import type { ElevationProfilePoint, ElevationService, ElevationTotals } from "./index";
 import { computeTotals } from "./index";
 
@@ -46,16 +46,7 @@ export class MapboxTerrainElevationService implements ElevationService {
     return samples.map((point, index) => {
       if (index > 0) {
         const prev = samples[index - 1];
-        const dLat = point.lat - prev.lat;
-        const dLng = point.lng - prev.lng;
-        const meanLat = ((point.lat + prev.lat) / 2) * (Math.PI / 180);
-        const kmPerDegreeLat = 111132.954 - 559.822 * Math.cos(2 * meanLat) + 1.175 * Math.cos(4 * meanLat);
-        const kmPerDegreeLng = 111132.954 * Math.cos(meanLat);
-        const delta = Math.sqrt(
-          (dLat * kmPerDegreeLat) ** 2 +
-            (dLng * kmPerDegreeLng) ** 2,
-        );
-        distance += delta * 1000;
+        distance += haversineDistance(prev, point);
       }
       return { d: distance, z: elevations[index] };
     });
