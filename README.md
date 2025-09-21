@@ -28,14 +28,14 @@ cp .env.example .env.local
 
 Tilgjengelige variabler:
 
-- `ROUTING_PROVIDER` – `osrm` (default), `ors` (OpenRouteService) eller `mock`.
+- `ROUTING_PROVIDER` – `mock` (default), `osrm` eller `ors` (OpenRouteService).
 - `ORS_API_KEY` – API-nøkkel for ORS hvis `ROUTING_PROVIDER=ors`.
-- `OSRM_BASE_URL` – tilpasset OSRM-endepunkt (default `https://router.project-osrm.org`).
+- `OSRM_BASE_URL` – valgfritt OSRM-endepunkt (default `https://router.project-osrm.org`).
 - `ELEVATION_PROVIDER` – `mock` eller `mapbox` (krever `MAPBOX_TOKEN`).
 - `GEOCODER_PROVIDER` – `mock`, `ors` eller `nominatim`.
 - `DEFAULT_PACE_SECONDS_PER_KM` – brukes til estimering av løpstid.
 
-Uten nøkler bruker systemet OSRMs offentlige ruteringsinstans for veinettfølgende ruter. Sett `ROUTING_PROVIDER=mock` for å kjøre helt offline med deterministiske ruter og syntetiske høydeprofiler.
+Uten nøkler kjører systemet med mock-providere som returnerer deterministiske ruter og syntetiske høydeprofiler. Sett `ROUTING_PROVIDER=osrm` for å bruke OSRMs offentlige veinett-tjeneste, eller `ors` dersom du har ORS-nøkkel.
 
 ## Bygg og drift
 
