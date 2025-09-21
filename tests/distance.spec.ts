@@ -8,6 +8,7 @@ import {
   interpolateAlongPath,
   interpolatePoint,
 } from "@/lib/geo/distance";
+import { bearingBetween } from "@/lib/geo/utils";
 import type { LatLng } from "@/types/route";
 
 describe("distance utilities", () => {
@@ -49,5 +50,12 @@ describe("distance utilities", () => {
       { lat: 59.01, lng: 10.0 },
     ];
     expect(Math.round(computePathLength(path))).toBeGreaterThan(1100);
+  });
+
+  it("beregner kompassretning mellom punkter", () => {
+    const north = bearingBetween({ lat: 59.0, lng: 10.0 }, { lat: 59.01, lng: 10.0 });
+    const east = bearingBetween({ lat: 59.0, lng: 10.0 }, { lat: 59.0, lng: 10.02 });
+    expect(Math.round(north)).toBe(0);
+    expect(Math.round(east)).toBe(90);
   });
 });

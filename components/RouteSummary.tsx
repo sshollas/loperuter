@@ -63,6 +63,11 @@ export function RouteSummary({ alternatives, selectedIndex, onSelect }: RouteSum
                 <div className="text-xs text-zinc-500">
                   Opp: {formatElevation(alt.elevationGainMeters)} • Ned: {formatElevation(alt.elevationLossMeters)}
                 </div>
+                {active && alt.segments && alt.segments.length > 0 && (
+                  <div className="mt-1 text-[11px] font-medium text-blue-600">
+                    {alt.segments.length} delstrekninger • {alt.kilometerMarkers?.length ?? 0} punkter
+                  </div>
+                )}
               </div>
             </div>
           </button>

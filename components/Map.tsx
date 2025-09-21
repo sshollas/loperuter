@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import maplibregl, { Map } from "maplibre-gl";
-import type { Feature, FeatureCollection, LineString } from "geojson";
+import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { decodePolyline } from "@/lib/geo/utils";
 import type { LatLng } from "@/types/route";
@@ -15,13 +15,37 @@ export interface MapRoute {
   active?: boolean;
 }
 
+interface KilometerMarker {
+  distanceMeters: number;
+  coordinate: LatLng;
+  label: string;
+}
+
 interface MapProps {
   center?: LatLng;
   bounds?: [[number, number], [number, number]];
   routes: MapRoute[];
+  kilometerMarkers?: KilometerMarker[];
 }
 
-export function MapView({ center, bounds, routes }: MapProps) {
+function lightenColor(hex: string, amount = 0.5) {
+  if (!hex.startsWith("#") || (hex.length !== 7 && hex.length !== 4)) {
+    return hex;
+  }
+  const normalized =
+    hex.length === 4
+      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+      : hex;
+  const r = Number.parseInt(normalized.slice(1, 3), 16);
+  const g = Number.parseInt(normalized.slice(3, 5), 16);
+  const b = Number.parseInt(normalized.slice(5, 7), 16);
+  const blend = (value: number) => Math.round(value + (255 - value) * amount);
+  return `#${blend(r).toString(16).padStart(2, "0")}${blend(g)
+    .toString(16)
+    .padStart(2, "0")}${blend(b).toString(16).padStart(2, "0")}`;
+}
+
+export function MapView({ center, bounds, routes, kilometerMarkers }: MapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
 
@@ -56,14 +80,23 @@ export function MapView({ center, bounds, routes }: MapProps) {
     if (!map) return;
 
     const applyRoutes = () => {
-      const features: Feature<LineString, { id: string; color: string; width: number; active: boolean }>[] = routes.map(
-        (route) => ({
+      const features: Feature<
+        LineString,
+        {
+          id: string;
+          color: string;
+          width: number;
+          active: boolean;
+          inactiveColor: string;
+        }
+      >[] = routes.map((route) => ({
           type: "Feature",
           properties: {
             id: route.id,
             color: route.color,
             width: route.width ?? (route.active ? 6 : 4),
             active: route.active ?? false,
+            inactiveColor: lightenColor(route.color, 0.75),
           },
           geometry: {
             type: "LineString",
@@ -74,7 +107,16 @@ export function MapView({ center, bounds, routes }: MapProps) {
 
       const sourceId = "route-alternatives";
       const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
-      const collection: FeatureCollection<LineString> = {
+      const collection: FeatureCollection<
+        LineString,
+        {
+          id: string;
+          color: string;
+          width: number;
+          active: boolean;
+          inactiveColor: string;
+        }
+      > = {
         type: "FeatureCollection",
         features,
       };
@@ -85,14 +127,50 @@ export function MapView({ center, bounds, routes }: MapProps) {
           type: "geojson",
           data: collection,
         });
+      }
+
+      if (map.getLayer("routes")) {
+        map.removeLayer("routes");
+      }
+
+      if (!map.getLayer("routes-base")) {
         map.addLayer({
-          id: "routes",
+          id: "routes-base",
           type: "line",
           source: sourceId,
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": [
+              "case",
+              ["get", "active"],
+              ["get", "color"],
+              ["get", "inactiveColor"],
+            ],
+            "line-width": ["get", "width"],
+            "line-opacity": ["case", ["get", "active"], 0.95, 0.35],
+            "line-blur": 0.2,
+          },
+        });
+      }
+
+      if (!map.getLayer("routes-highlight")) {
+        map.addLayer({
+          id: "routes-highlight",
+          type: "line",
+          source: sourceId,
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          filter: ["==", ["get", "active"], true],
           paint: {
             "line-color": ["get", "color"],
-            "line-width": ["get", "width"],
-            "line-opacity": ["case", ["get", "active"], 0.95, 0.6],
+            "line-width": ["+", ["get", "width"], 2],
+            "line-opacity": 0.9,
+            "line-blur": 0.4,
           },
         });
       }
@@ -108,6 +186,119 @@ export function MapView({ center, bounds, routes }: MapProps) {
       map.off("load", applyRoutes);
     };
   }, [routes]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const sourceId = "route-kilometers";
+    const circleLayerId = "route-km-circles";
+    const labelLayerId = "route-km-labels";
+
+    const cleanupLayers = () => {
+      if (map.getLayer(labelLayerId)) {
+        map.removeLayer(labelLayerId);
+      }
+      if (map.getLayer(circleLayerId)) {
+        map.removeLayer(circleLayerId);
+      }
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    };
+
+    if (!kilometerMarkers || kilometerMarkers.length === 0) {
+      if (map.isStyleLoaded()) {
+        cleanupLayers();
+      } else {
+        const onLoad = () => cleanupLayers();
+        map.once("load", onLoad);
+        return () => {
+          map.off("load", onLoad);
+        };
+      }
+      return;
+    }
+
+    const updateMarkers = () => {
+      const features: Feature<
+        Point,
+        { label: string; distance: number }
+      >[] = kilometerMarkers.map((marker) => ({
+        type: "Feature",
+        properties: {
+          label: marker.label,
+          distance: marker.distanceMeters,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [marker.coordinate.lng, marker.coordinate.lat],
+        },
+      }));
+
+      const collection: FeatureCollection<
+        Point,
+        { label: string; distance: number }
+      > = {
+        type: "FeatureCollection",
+        features,
+      };
+
+      const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+      if (existing) {
+        existing.setData(collection);
+      } else {
+        map.addSource(sourceId, {
+          type: "geojson",
+          data: collection,
+        });
+      }
+
+      if (!map.getLayer(circleLayerId)) {
+        map.addLayer({
+          id: circleLayerId,
+          type: "circle",
+          source: sourceId,
+          paint: {
+            "circle-radius": 5,
+            "circle-color": "#ffffff",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#2563eb",
+          },
+        });
+      }
+
+      if (!map.getLayer(labelLayerId)) {
+        map.addLayer({
+          id: labelLayerId,
+          type: "symbol",
+          source: sourceId,
+          layout: {
+            "text-field": ["get", "label"],
+            "text-size": 12,
+            "text-offset": [0, 1.2],
+            "text-anchor": "top",
+          },
+          paint: {
+            "text-color": "#1e293b",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1,
+          },
+        });
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateMarkers();
+      return () => undefined;
+    }
+
+    const onLoad = () => updateMarkers();
+    map.once("load", onLoad);
+    return () => {
+      map.off("load", onLoad);
+    };
+  }, [kilometerMarkers]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

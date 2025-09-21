@@ -25,6 +25,8 @@ export interface RouteAlternative {
   elevationLossMeters: number;
   estimatedTimeSeconds?: number;
   elevationProfile?: { distance: number; elevation: number }[];
+  kilometerMarkers?: RouteKilometerMarker[];
+  segments?: RouteSegment[];
   providerMeta?: unknown;
 }
 
@@ -33,4 +35,17 @@ export interface RouteResponse {
   center: LatLng;
   bounds: [[number, number], [number, number]];
   notes?: string[];
+}
+
+export interface RouteKilometerMarker {
+  distanceMeters: number;
+  coordinate: LatLng;
+  label: string;
+}
+
+export interface RouteSegment {
+  startDistanceMeters: number;
+  endDistanceMeters: number;
+  lengthMeters: number;
+  headingDegrees: number;
 }

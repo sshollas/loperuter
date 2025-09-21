@@ -81,3 +81,17 @@ export function hashPath(coords: LatLng[]): string {
     .map((p) => `${p.lat.toFixed(5)}:${p.lng.toFixed(5)}`)
     .join("|");
 }
+
+export function bearingBetween(a: LatLng, b: LatLng): number {
+  const lat1 = a.lat * DEG_TO_RAD;
+  const lat2 = b.lat * DEG_TO_RAD;
+  const dLng = (b.lng - a.lng) * DEG_TO_RAD;
+
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+  const bearing = Math.atan2(y, x) * RAD_TO_DEG;
+  return (bearing + 360) % 360;
+}

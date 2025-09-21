@@ -6,6 +6,7 @@ import {
   decodePolyline,
   destinationPoint,
   hashPath,
+  bearingBetween,
 } from "@/lib/geo/utils";
 import {
   computePathLength,
@@ -22,6 +23,8 @@ import type {
   RouteAlternative,
   RouteResponse,
   RoundTripRequest,
+  RouteKilometerMarker,
+  RouteSegment,
 } from "@/types/route";
 import { MockRoutingProvider } from "./providers/mock";
 import { OrsRoutingProvider } from "./providers/ors";
@@ -263,6 +266,7 @@ async function enrichCandidates(
     seen.add(signature);
     const profile = await elevation.getProfile(candidate.route.polyline);
     const totals = elevation.getTotals(profile);
+    const annotations = buildRouteAnnotations(candidate.route.coordinates);
     const alternative: RouteAlternative = {
       polyline: candidate.route.polyline,
       distanceMeters: candidate.route.distanceMeters,
@@ -274,6 +278,8 @@ async function enrichCandidates(
         distance: point.d,
         elevation: point.z,
       })),
+      kilometerMarkers: annotations.markers,
+      segments: annotations.segments,
       providerMeta: { kind: candidate.kind, label: candidate.label },
     };
     enriched.push(alternative);
@@ -290,6 +296,62 @@ function dedupeRoutes(alternatives: RouteAlternative[]): RouteAlternative[] {
     }
   });
   return Array.from(unique.values());
+}
+
+function buildRouteAnnotations(
+  path: { lat: number; lng: number }[],
+): { markers: RouteKilometerMarker[]; segments: RouteSegment[] } {
+  if (path.length === 0) {
+    return { markers: [], segments: [] };
+  }
+
+  const distances = cumulativeDistances(path);
+  const total = distances[distances.length - 1] ?? 0;
+
+  const points: { distance: number; coord: { lat: number; lng: number } }[] = [
+    { distance: 0, coord: path[0] },
+  ];
+
+  for (let d = 1000; d < total; d += 1000) {
+    points.push({ distance: d, coord: interpolatePoint(path, distances, d) });
+  }
+
+  if (total > 0) {
+    const lastPoint = points[points.length - 1];
+    if (!lastPoint || Math.abs(lastPoint.distance - total) > 1) {
+      points.push({ distance: total, coord: path[path.length - 1] });
+    }
+  }
+
+  const markers: RouteKilometerMarker[] = points.map((point, index) => ({
+    distanceMeters: point.distance,
+    coordinate: point.coord,
+    label:
+      index === 0
+        ? "Start"
+        : index === points.length - 1
+          ? "Mål"
+          : `${(point.distance / 1000).toFixed(0)} km`,
+  }));
+
+  const segments: RouteSegment[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const start = points[i];
+    const end = points[i + 1];
+    const length = Math.max(0, end.distance - start.distance);
+    if (length < 10) {
+      continue;
+    }
+    const heading = bearingBetween(start.coord, end.coord);
+    segments.push({
+      startDistanceMeters: start.distance,
+      endDistanceMeters: end.distance,
+      lengthMeters: length,
+      headingDegrees: Number.isFinite(heading) ? heading : 0,
+    });
+  }
+
+  return { markers, segments };
 }
 
 function sortAlternatives(
@@ -482,4 +544,5 @@ export const __testables = {
   splitBaseline,
   searchForDetour,
   combineRoute,
+  buildRouteAnnotations,
 };

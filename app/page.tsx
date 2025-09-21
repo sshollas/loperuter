@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Controls, ControlsValues, Mode } from "@/components/Controls";
 import { MapView } from "@/components/Map";
 import { RouteSummary } from "@/components/RouteSummary";
+import { RouteDetails } from "@/components/RouteDetails";
 import { ElevationChart } from "@/components/ElevationChart";
 import type { LatLng, RouteAlternative, RouteResponse } from "@/types/route";
 
@@ -151,6 +152,7 @@ export default function HomePage() {
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
           />
+          <RouteDetails route={selectedRoute} />
           <ElevationChart profile={selectedRoute?.elevationProfile} />
         </aside>
 
@@ -160,6 +162,7 @@ export default function HomePage() {
               center={mapCenter}
               bounds={mapBounds}
               routes={mapRoutes}
+              kilometerMarkers={selectedRoute?.kilometerMarkers}
             />
           </div>
         </section>

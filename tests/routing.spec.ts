@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { planPointToPoint, planRoundTrip, __testables } from "@/lib/routing";
 import { MockRoutingProvider } from "@/lib/routing/providers/mock";
 import type { ElevationService } from "@/lib/elevation";
+import type { LatLng } from "@/types/route";
 
 const stubElevation: ElevationService = {
   async getProfile() {
@@ -54,6 +55,8 @@ describe("routing heuristics", () => {
     expect(response.alternatives.length).toBeGreaterThanOrEqual(2);
     response.alternatives.forEach((alt) => {
       expect(Math.abs(alt.distanceMeters - 10000)).toBeLessThanOrEqual(2000);
+      expect(alt.kilometerMarkers?.length ?? 0).toBeGreaterThan(0);
+      expect(alt.segments?.length ?? 0).toBeGreaterThan(0);
     });
   });
 
@@ -71,5 +74,21 @@ describe("routing heuristics", () => {
       Math.abs(alt.distanceMeters - 12000) <= 1500,
     );
     expect(match).toBeDefined();
+    if (match) {
+      expect(match.kilometerMarkers?.[0]?.label).toBe("Start");
+      expect(match.kilometerMarkers?.slice(-1)[0]?.label).toBe("Mål");
+    }
+  });
+
+  it("bygger kilometerpunkter og segmenter", () => {
+    const path: LatLng[] = [
+      { lat: 59.91, lng: 10.75 },
+      { lat: 59.92, lng: 10.76 },
+      { lat: 59.93, lng: 10.77 },
+    ];
+    const annotations = __testables.buildRouteAnnotations(path);
+    expect(annotations.markers[0]?.label).toBe("Start");
+    expect(annotations.markers[annotations.markers.length - 1]?.label).toBe("Mål");
+    expect(annotations.segments.length).toBeGreaterThan(0);
   });
 });

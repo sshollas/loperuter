@@ -1,4 +1,3 @@
-import "./registerPaths";
 import express, { Request, Response } from "express";
 import next from "next";
 import { handleRoundTrip } from "../app/api/routes/roundtrip/handler";
