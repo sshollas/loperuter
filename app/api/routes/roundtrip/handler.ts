@@ -13,6 +13,7 @@ const roundTripSchema = z.object({
   targetDistanceMeters: z.number().positive(),
   distanceToleranceMeters: z.number().positive().optional(),
   preferElevation: z.enum(["min", "max", "balanced"]).optional(),
+  avoidRevisiting: z.boolean().optional(),
 });
 
 export async function handleRoundTrip(body: unknown): Promise<RouteResponse> {

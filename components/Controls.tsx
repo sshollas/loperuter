@@ -10,6 +10,7 @@ export interface ControlsValues {
   targetDistanceKm: number;
   toleranceMeters: number;
   preferElevation: "min" | "balanced" | "max";
+  avoidRevisiting: boolean;
 }
 
 interface ControlsProps {
@@ -159,6 +160,18 @@ export function Controls({
           ))}
         </div>
       </div>
+
+      <label className="flex items-center gap-2 text-xs font-semibold text-zinc-600">
+        <input
+          type="checkbox"
+          checked={values.avoidRevisiting}
+          onChange={(event) => onChange({ avoidRevisiting: event.target.checked })}
+          className="h-4 w-4 rounded border border-zinc-300 text-blue-600 focus:ring-blue-500"
+        />
+        <span className="font-medium normal-case text-zinc-700">
+          Unngå å løpe samme strekning to ganger
+        </span>
+      </label>
 
       <button
         type="button"

@@ -45,23 +45,38 @@ export class OrsRoutingProvider implements RoutingProvider {
     const body: {
       coordinates: [number, number][];
       options?: {
-        alternative_routes: {
+        alternative_routes?: {
           target_count: number;
           share_factor: number;
           weight_factor: number;
         };
+        avoid_features?: string[];
       };
     } = {
       coordinates: coordinates.map((c) => [c.lng, c.lat]),
     };
-    if (options?.alternatives) {
-      body.options = {
-        alternative_routes: {
-          target_count: options.alternatives,
-          share_factor: 0.6,
-          weight_factor: 3,
-        },
+
+    const optionsPayload: {
+      alternative_routes?: {
+        target_count: number;
+        share_factor: number;
+        weight_factor: number;
       };
+      avoid_features?: string[];
+    } = {
+      avoid_features: ["highways", "tollways"],
+    };
+
+    if (options?.alternatives) {
+      optionsPayload.alternative_routes = {
+        target_count: options.alternatives,
+        share_factor: 0.6,
+        weight_factor: 3,
+      };
+    }
+
+    if (optionsPayload.alternative_routes || optionsPayload.avoid_features) {
+      body.options = optionsPayload;
     }
 
     const response = await axios.post(
@@ -91,6 +106,9 @@ export class OrsRoutingProvider implements RoutingProvider {
           length: options.length,
           points: 3,
           seed: options.seed ?? Math.floor(Math.random() * 10000),
+        },
+        options: {
+          avoid_features: ["highways", "tollways"],
         },
       },
       {

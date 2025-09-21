@@ -17,6 +17,7 @@ const DEFAULT_VALUES: ControlsValues = {
   targetDistanceKm: 10,
   toleranceMeters: 100,
   preferElevation: "balanced",
+  avoidRevisiting: false,
 };
 
 const COLORS = ["#2563eb", "#38bdf8", "#f97316", "#22c55e", "#a855f7"];
@@ -138,6 +139,7 @@ export default function HomePage() {
       targetDistanceMeters,
       distanceToleranceMeters: values.toleranceMeters,
       preferElevation: values.preferElevation,
+      avoidRevisiting: values.avoidRevisiting,
     };
     if (mode === "roundtrip") {
       return basePayload;

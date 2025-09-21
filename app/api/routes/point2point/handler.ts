@@ -20,6 +20,7 @@ const pointToPointSchema = z.object({
   targetDistanceMeters: z.number().positive(),
   distanceToleranceMeters: z.number().positive().optional(),
   preferElevation: z.enum(["min", "max", "balanced"]).optional(),
+  avoidRevisiting: z.boolean().optional(),
 });
 
 export async function handlePointToPoint(body: unknown): Promise<RouteResponse> {
