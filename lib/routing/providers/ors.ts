@@ -1,7 +1,11 @@
 import axios from "axios";
 import { decodePolyline } from "@/lib/geo/utils";
 import type { LatLng } from "@/types/route";
-import type { RoutingProvider, RoutingProviderRoute } from "../types";
+import type {
+  RoutingProvider,
+  RoutingProviderRoute,
+  RoutingProviderStep,
+} from "../types";
 
 interface OrsRouteSummary {
   distance: number;
@@ -11,6 +15,19 @@ interface OrsRouteSummary {
 interface OrsRoute {
   geometry: string;
   summary: OrsRouteSummary;
+  segments?: OrsSegment[];
+  [key: string]: unknown;
+}
+
+interface OrsSegment {
+  steps?: OrsStep[];
+}
+
+interface OrsStep {
+  distance: number;
+  duration: number;
+  instruction?: string;
+  name?: string;
   [key: string]: unknown;
 }
 
@@ -90,6 +107,9 @@ export class OrsRoutingProvider implements RoutingProvider {
 
   private toRoute(route: OrsRoute): RoutingProviderRoute {
     const { summary, geometry } = route;
+    const steps = (route.segments ?? [])
+      .flatMap((segment) => segment.steps ?? [])
+      .map((step) => this.toStep(step));
     const coordinates = decodePolyline(geometry);
     return {
       polyline: geometry,
@@ -97,6 +117,16 @@ export class OrsRoutingProvider implements RoutingProvider {
       distanceMeters: summary.distance,
       durationSeconds: summary.duration,
       providerMeta: route,
+      steps,
+    };
+  }
+
+  private toStep(step: OrsStep): RoutingProviderStep {
+    return {
+      distanceMeters: step.distance,
+      durationSeconds: step.duration,
+      instruction: step.instruction?.trim() || undefined,
+      name: step.name?.trim() || undefined,
     };
   }
 }

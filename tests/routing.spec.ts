@@ -3,6 +3,7 @@ import { planPointToPoint, planRoundTrip, __testables } from "@/lib/routing";
 import { MockRoutingProvider } from "@/lib/routing/providers/mock";
 import type { ElevationService } from "@/lib/elevation";
 import type { LatLng } from "@/types/route";
+import { computePathLength } from "@/lib/geo/distance";
 
 const stubElevation: ElevationService = {
   async getProfile() {
@@ -90,5 +91,40 @@ describe("routing heuristics", () => {
     expect(annotations.markers[0]?.label).toBe("Start");
     expect(annotations.markers[annotations.markers.length - 1]?.label).toBe("Mål");
     expect(annotations.segments.length).toBeGreaterThan(0);
+  });
+
+  it("oversetter manøvre til norske instruksjoner med gatenavn", () => {
+    const path: LatLng[] = [
+      { lat: 59.91, lng: 10.75 },
+      { lat: 59.92, lng: 10.75 },
+      { lat: 59.92, lng: 10.76 },
+      { lat: 59.93, lng: 10.76 },
+    ];
+    const total = computePathLength(path);
+    const stepLength = total / 3;
+    const annotations = __testables.buildRouteAnnotations(path, [
+      {
+        distanceMeters: stepLength,
+        maneuver: { type: "depart", modifier: "straight" },
+        name: "Startveien",
+      },
+      {
+        distanceMeters: stepLength,
+        maneuver: { type: "turn", modifier: "right" },
+        name: "Høyreveien",
+      },
+      {
+        distanceMeters: total - stepLength * 2,
+        maneuver: { type: "arrive" },
+        name: "Målplassen",
+      },
+    ]);
+    expect(annotations.segments.length).toBeGreaterThanOrEqual(3);
+    expect(annotations.segments[0]?.instruction).toContain("Start på Startveien");
+    expect(annotations.segments[1]?.instruction).toContain("Ta til høyre inn på Høyreveien");
+    expect(annotations.segments[1]?.streetName).toBe("Høyreveien");
+    expect(
+      annotations.segments[annotations.segments.length - 1]?.instruction,
+    ).toContain("Målet ligger ved Målplassen");
   });
 });

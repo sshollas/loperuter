@@ -1,11 +1,26 @@
 import { LatLng } from "@/types/route";
 
+export interface RoutingProviderStep {
+  distanceMeters: number;
+  durationSeconds?: number;
+  name?: string;
+  instruction?: string;
+  geometry?: LatLng[];
+  maneuver?: {
+    type?: string;
+    modifier?: string;
+    bearingBefore?: number;
+    bearingAfter?: number;
+  };
+}
+
 export interface RoutingProviderRoute {
   polyline: string;
   coordinates: LatLng[];
   distanceMeters: number;
   durationSeconds?: number;
   providerMeta?: unknown;
+  steps?: RoutingProviderStep[];
 }
 
 export interface RoutePlanningContext {

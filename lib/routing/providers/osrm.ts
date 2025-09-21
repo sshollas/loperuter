@@ -1,7 +1,11 @@
 import axios from "axios";
 import { decodePolyline } from "@/lib/geo/utils";
 import type { LatLng } from "@/types/route";
-import type { RoutingProvider, RoutingProviderRoute } from "../types";
+import type {
+  RoutingProvider,
+  RoutingProviderRoute,
+  RoutingProviderStep,
+} from "../types";
 
 type OsrmProfile = "foot" | "cycling" | "driving";
 
@@ -24,7 +28,25 @@ interface OsrmRoute {
   distance: number;
   duration: number;
   geometry: string;
+  legs?: OsrmLeg[];
   [key: string]: unknown;
+}
+
+interface OsrmLeg {
+  steps?: OsrmStep[];
+}
+
+interface OsrmStep {
+  distance: number;
+  duration: number;
+  geometry: string;
+  name: string;
+  maneuver?: {
+    type?: string;
+    modifier?: string;
+    bearing_after?: number;
+    bearing_before?: number;
+  };
 }
 
 export class OsrmRoutingProvider implements RoutingProvider {
@@ -61,7 +83,7 @@ export class OsrmRoutingProvider implements RoutingProvider {
     }
     url.searchParams.set("overview", "full");
     url.searchParams.set("geometries", "polyline");
-    url.searchParams.set("steps", "false");
+    url.searchParams.set("steps", "true");
     url.searchParams.set("annotations", "distance,duration");
 
     const response = await axios.get(url.toString(), {
@@ -82,12 +104,31 @@ export class OsrmRoutingProvider implements RoutingProvider {
 
   private toRoute(route: OsrmRoute): RoutingProviderRoute {
     const coordinates = decodePolyline(route.geometry);
+    const steps = (route.legs ?? [])
+      .flatMap((leg) => leg.steps ?? [])
+      .map((step) => this.toStep(step));
     return {
       polyline: route.geometry,
       coordinates,
       distanceMeters: route.distance,
       durationSeconds: route.duration,
       providerMeta: route,
+      steps,
+    };
+  }
+
+  private toStep(step: OsrmStep): RoutingProviderStep {
+    return {
+      distanceMeters: step.distance,
+      durationSeconds: step.duration,
+      name: step.name?.trim() || undefined,
+      geometry: step.geometry ? decodePolyline(step.geometry) : undefined,
+      maneuver: {
+        type: step.maneuver?.type,
+        modifier: step.maneuver?.modifier,
+        bearingAfter: step.maneuver?.bearing_after,
+        bearingBefore: step.maneuver?.bearing_before,
+      },
     };
   }
 }

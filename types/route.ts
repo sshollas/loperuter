@@ -48,4 +48,8 @@ export interface RouteSegment {
   endDistanceMeters: number;
   lengthMeters: number;
   headingDegrees: number;
+  streetName?: string;
+  instruction?: string;
+  maneuverType?: string;
+  turnModifier?: string;
 }

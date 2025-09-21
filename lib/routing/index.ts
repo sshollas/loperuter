@@ -29,7 +29,11 @@ import type {
 import { MockRoutingProvider } from "./providers/mock";
 import { OrsRoutingProvider } from "./providers/ors";
 import { OsrmRoutingProvider } from "./providers/osrm";
-import type { RoutingProvider, RoutingProviderRoute } from "./types";
+import type {
+  RoutingProvider,
+  RoutingProviderRoute,
+  RoutingProviderStep,
+} from "./types";
 
 function createRoutingProvider(): RoutingProvider {
   const provider = process.env.ROUTING_PROVIDER?.toLowerCase() ?? "osrm";
@@ -266,7 +270,10 @@ async function enrichCandidates(
     seen.add(signature);
     const profile = await elevation.getProfile(candidate.route.polyline);
     const totals = elevation.getTotals(profile);
-    const annotations = buildRouteAnnotations(candidate.route.coordinates);
+    const annotations = buildRouteAnnotations(
+      candidate.route.coordinates,
+      candidate.route.steps,
+    );
     const alternative: RouteAlternative = {
       polyline: candidate.route.polyline,
       distanceMeters: candidate.route.distanceMeters,
@@ -300,6 +307,7 @@ function dedupeRoutes(alternatives: RouteAlternative[]): RouteAlternative[] {
 
 function buildRouteAnnotations(
   path: { lat: number; lng: number }[],
+  steps?: RoutingProviderStep[],
 ): { markers: RouteKilometerMarker[]; segments: RouteSegment[] } {
   if (path.length === 0) {
     return { markers: [], segments: [] };
@@ -334,6 +342,67 @@ function buildRouteAnnotations(
           : `${(point.distance / 1000).toFixed(0)} km`,
   }));
 
+  let segments =
+    steps && steps.length > 0
+      ? buildSegmentsFromSteps(path, distances, total, steps)
+      : buildFallbackSegments(points);
+
+  if (segments.length === 0) {
+    segments = buildFallbackSegments(points);
+  }
+
+  return { markers, segments };
+}
+
+function buildSegmentsFromSteps(
+  path: { lat: number; lng: number }[],
+  distances: number[],
+  total: number,
+  steps: RoutingProviderStep[],
+): RouteSegment[] {
+  const segments: RouteSegment[] = [];
+  if (total <= 0) {
+    return segments;
+  }
+
+  let traversed = 0;
+  for (const step of steps) {
+    const distance = Math.max(0, step.distanceMeters ?? 0);
+    const important = isImportantStep(step);
+    const start = Math.min(traversed, total);
+    traversed += distance;
+    const rawEnd = Math.min(traversed, total);
+    const length = Math.max(0, rawEnd - start);
+    if (!important && length < 5) {
+      continue;
+    }
+    if (length <= 0 && !important) {
+      continue;
+    }
+
+    const startCoord = interpolatePoint(path, distances, start);
+    const endCoord = interpolatePoint(path, distances, Math.max(rawEnd, start));
+    const heading = step.maneuver?.bearingAfter ?? bearingBetween(startCoord, endCoord);
+    const streetName = normalizeStreetName(step.name);
+    const instruction = createInstructionFromStep(step, streetName);
+    segments.push({
+      startDistanceMeters: start,
+      endDistanceMeters: rawEnd,
+      lengthMeters: length,
+      headingDegrees: Number.isFinite(heading) ? heading : 0,
+      streetName,
+      instruction,
+      maneuverType: step.maneuver?.type,
+      turnModifier: step.maneuver?.modifier,
+    });
+  }
+
+  return segments;
+}
+
+function buildFallbackSegments(
+  points: { distance: number; coord: { lat: number; lng: number } }[],
+): RouteSegment[] {
   const segments: RouteSegment[] = [];
   for (let i = 0; i < points.length - 1; i += 1) {
     const start = points[i];
@@ -343,15 +412,201 @@ function buildRouteAnnotations(
       continue;
     }
     const heading = bearingBetween(start.coord, end.coord);
+    const direction = headingToCardinal(heading);
     segments.push({
       startDistanceMeters: start.distance,
       endDistanceMeters: end.distance,
       lengthMeters: length,
       headingDegrees: Number.isFinite(heading) ? heading : 0,
+      instruction: `Fortsett mot ${direction}`,
     });
   }
+  return segments;
+}
 
-  return { markers, segments };
+function isImportantStep(step: RoutingProviderStep): boolean {
+  const type = step.maneuver?.type;
+  return type === "depart" || type === "arrive";
+}
+
+function createInstructionFromStep(
+  step: RoutingProviderStep,
+  streetName?: string,
+): string | undefined {
+  const maneuverType = step.maneuver?.type;
+  const modifier = step.maneuver?.modifier;
+  const street = streetName ?? normalizeStreetName(step.name);
+
+  if (maneuverType) {
+    switch (maneuverType) {
+      case "depart":
+        return street ? `Start på ${street}` : "Start ruten";
+      case "arrive":
+        return street ? `Målet ligger ved ${street}` : "Du er fremme ved målet";
+      case "turn":
+      case "end of road":
+      case "fork":
+      case "on ramp":
+      case "off ramp":
+        return buildTurnInstruction(modifier, street);
+      case "merge":
+      case "continue":
+      case "new name":
+        return buildContinueInstruction(modifier, street);
+      case "roundabout":
+        return street
+          ? `Kjør inn i rundkjøringen og følg ${street}`
+          : "Kjør inn i rundkjøringen";
+      case "uturn":
+        return street ? `Ta en U-sving mot ${street}` : "Ta en U-sving";
+      default:
+        break;
+    }
+  }
+
+  if (step.instruction) {
+    return translateProviderInstruction(step.instruction, street);
+  }
+
+  if (street) {
+    return `Følg ${street}`;
+  }
+  return undefined;
+}
+
+function normalizeStreetName(name?: string): string | undefined {
+  if (!name) {
+    return undefined;
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.toLowerCase() === "unnamed road") {
+    return "ukjent vei";
+  }
+  return trimmed;
+}
+
+function buildTurnInstruction(
+  modifier: string | undefined,
+  street?: string,
+): string {
+  if (modifier === "straight") {
+    return buildContinueInstruction(modifier, street);
+  }
+  if (modifier === "uturn") {
+    return street ? `Ta en U-sving mot ${street}` : "Ta en U-sving";
+  }
+  const direction = turnDirectionPhrase(modifier);
+  if (!direction) {
+    return street ? `Ta av inn på ${street}` : "Ta av";
+  }
+  if (street) {
+    return `Ta ${direction} inn på ${street}`;
+  }
+  return `Ta ${direction}`;
+}
+
+function buildContinueInstruction(
+  modifier: string | undefined,
+  street?: string,
+): string {
+  if (modifier === "uturn") {
+    return street ? `Ta en U-sving mot ${street}` : "Ta en U-sving";
+  }
+  if (!modifier || modifier === "straight") {
+    return street ? `Fortsett på ${street}` : "Fortsett rett frem";
+  }
+  const direction = keepDirectionPhrase(modifier);
+  if (street) {
+    return direction
+      ? `Hold ${direction} og følg ${street}`
+      : `Fortsett på ${street}`;
+  }
+  return direction ? `Hold ${direction}` : "Fortsett";
+}
+
+function turnDirectionPhrase(modifier?: string): string | undefined {
+  switch (modifier) {
+    case "right":
+      return "til høyre";
+    case "left":
+      return "til venstre";
+    case "slight right":
+      return "svakt til høyre";
+    case "slight left":
+      return "svakt til venstre";
+    case "sharp right":
+      return "skarpt til høyre";
+    case "sharp left":
+      return "skarpt til venstre";
+    default:
+      return undefined;
+  }
+}
+
+function keepDirectionPhrase(modifier?: string): string | undefined {
+  switch (modifier) {
+    case "right":
+      return "mot høyre";
+    case "left":
+      return "mot venstre";
+    case "slight right":
+      return "svakt mot høyre";
+    case "slight left":
+      return "svakt mot venstre";
+    case "sharp right":
+      return "skarpt mot høyre";
+    case "sharp left":
+      return "skarpt mot venstre";
+    case "straight":
+      return "rett frem";
+    default:
+      return undefined;
+  }
+}
+
+function headingToCardinal(degrees: number): string {
+  const labels = [
+    "nord",
+    "nordøst",
+    "øst",
+    "sørøst",
+    "sør",
+    "sørvest",
+    "vest",
+    "nordvest",
+  ];
+  const index = Math.round(degrees / 45) % labels.length;
+  return labels[index] ?? labels[0];
+}
+
+function translateProviderInstruction(
+  raw: string,
+  street?: string,
+): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return raw;
+  }
+  const normalized = trimmed.toLowerCase();
+  if (normalized.startsWith("turn right")) {
+    return street ? `Ta til høyre inn på ${street}` : "Ta til høyre";
+  }
+  if (normalized.startsWith("turn left")) {
+    return street ? `Ta til venstre inn på ${street}` : "Ta til venstre";
+  }
+  if (normalized.startsWith("continue")) {
+    return street ? `Fortsett på ${street}` : "Fortsett rett frem";
+  }
+  if (normalized.startsWith("head")) {
+    return street ? `Start på ${street}` : "Start ruten";
+  }
+  if (normalized.startsWith("arrive")) {
+    return street ? `Målet ligger ved ${street}` : "Du er fremme ved målet";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function sortAlternatives(

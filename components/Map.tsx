@@ -221,6 +221,8 @@ export function MapView({ center, bounds, routes, kilometerMarkers }: MapProps) 
     }
 
     const updateMarkers = () => {
+      cleanupLayers();
+
       const features: Feature<
         Point,
         { label: string; distance: number }
@@ -244,48 +246,39 @@ export function MapView({ center, bounds, routes, kilometerMarkers }: MapProps) 
         features,
       };
 
-      const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
-      if (existing) {
-        existing.setData(collection);
-      } else {
-        map.addSource(sourceId, {
-          type: "geojson",
-          data: collection,
-        });
-      }
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: collection,
+      });
 
-      if (!map.getLayer(circleLayerId)) {
-        map.addLayer({
-          id: circleLayerId,
-          type: "circle",
-          source: sourceId,
-          paint: {
-            "circle-radius": 5,
-            "circle-color": "#ffffff",
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#2563eb",
-          },
-        });
-      }
+      map.addLayer({
+        id: circleLayerId,
+        type: "circle",
+        source: sourceId,
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#2563eb",
+        },
+      });
 
-      if (!map.getLayer(labelLayerId)) {
-        map.addLayer({
-          id: labelLayerId,
-          type: "symbol",
-          source: sourceId,
-          layout: {
-            "text-field": ["get", "label"],
-            "text-size": 12,
-            "text-offset": [0, 1.2],
-            "text-anchor": "top",
-          },
-          paint: {
-            "text-color": "#1e293b",
-            "text-halo-color": "#ffffff",
-            "text-halo-width": 1,
-          },
-        });
-      }
+      map.addLayer({
+        id: labelLayerId,
+        type: "symbol",
+        source: sourceId,
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 12,
+          "text-offset": [0, 1.2],
+          "text-anchor": "top",
+        },
+        paint: {
+          "text-color": "#1e293b",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1,
+        },
+      });
     };
 
     if (map.isStyleLoaded()) {

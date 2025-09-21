@@ -21,7 +21,7 @@ function formatRange(startMeters: number, endMeters: number) {
   return `${startKm.toFixed(1)}–${endKm.toFixed(1)} km`;
 }
 
-function headingToText(degrees: number) {
+function headingToDirection(degrees: number) {
   const labels = [
     "nord",
     "nordøst",
@@ -33,8 +33,18 @@ function headingToText(degrees: number) {
     "nordvest",
   ];
   const index = Math.round(degrees / 45) % labels.length;
-  const label = labels[index] ?? labels[0];
-  return `Mot ${label}`;
+  return labels[index] ?? labels[0];
+}
+
+function formatInstruction(segment: RouteAlternative["segments"][number]) {
+  if (segment.instruction) {
+    return segment.instruction;
+  }
+  if (segment.streetName) {
+    return `Følg ${segment.streetName}`;
+  }
+  const direction = headingToDirection(segment.headingDegrees);
+  return `Fortsett mot ${direction}`;
 }
 
 export function RouteDetails({ route }: RouteDetailsProps) {
@@ -64,10 +74,18 @@ export function RouteDetails({ route }: RouteDetailsProps) {
                 <span>{formatMeters(segment.lengthMeters)}</span>
               </div>
               <div className="mt-1 text-sm font-medium text-zinc-700">
-                {headingToText(segment.headingDegrees)}
+                {formatInstruction(segment)}
               </div>
+              {segment.streetName && (
+                <div className="text-[11px] text-zinc-500">
+                  {segment.streetName}
+                </div>
+              )}
               <div className="text-[11px] text-zinc-500">
-                {formatRange(segment.startDistanceMeters, segment.endDistanceMeters)} • {Math.round(segment.headingDegrees)}°
+                {formatRange(segment.startDistanceMeters, segment.endDistanceMeters)}
+                {" "}• {formatMeters(segment.lengthMeters)}
+                {" "}
+                • mot {headingToDirection(segment.headingDegrees)}
               </div>
             </li>
           ))}
@@ -78,15 +96,15 @@ export function RouteDetails({ route }: RouteDetailsProps) {
         <div className="mt-4">
           <h4 className="text-xs font-semibold uppercase text-zinc-500">Kilometerpunkter</h4>
           <div className="mt-2 flex flex-wrap gap-2">
-              {markers.map((marker) => (
-                <span
-                  key={`${marker.label}-${marker.distanceMeters}`}
-                  className="flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-medium text-blue-700"
-                >
-                  <span>{marker.label}</span>
-                  <span className="text-[10px] font-normal text-blue-500">{formatMeters(marker.distanceMeters)}</span>
-                </span>
-              ))}
+            {markers.map((marker) => (
+              <span
+                key={`${marker.label}-${marker.distanceMeters}`}
+                className="flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-medium text-blue-700"
+              >
+                <span>{marker.label}</span>
+                <span className="text-[10px] font-normal text-blue-500">{formatMeters(marker.distanceMeters)}</span>
+              </span>
+            ))}
           </div>
         </div>
       )}
