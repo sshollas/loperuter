@@ -26,6 +26,7 @@ import type {
   RouteKilometerMarker,
   RouteSegment,
 } from "@/types/route";
+import { LocalRoutingProvider } from "./providers/local";
 import { MockRoutingProvider } from "./providers/mock";
 import { OrsRoutingProvider } from "./providers/ors";
 import { OsrmRoutingProvider } from "./providers/osrm";
@@ -39,6 +40,9 @@ function createRoutingProvider(): RoutingProvider {
   const provider = process.env.ROUTING_PROVIDER?.toLowerCase() ?? "osrm";
   if (provider === "mock") {
     return new MockRoutingProvider();
+  }
+  if (provider === "local") {
+    return new LocalRoutingProvider();
   }
   if (provider === "ors") {
     const apiKey = process.env.ORS_API_KEY;

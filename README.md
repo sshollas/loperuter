@@ -28,15 +28,26 @@ cp .env.example .env.local
 
 Tilgjengelige variabler:
 
-- `ROUTING_PROVIDER` – `osrm` (default), `ors` (OpenRouteService) eller `mock`.
+- `ROUTING_PROVIDER` – `osrm` (default), `ors` (OpenRouteService), `local` (forhåndsberegnet graf) eller `mock`.
 - `ORS_API_KEY` – API-nøkkel for ORS hvis `ROUTING_PROVIDER=ors`.
 - `OSRM_BASE_URL` – valgfritt OSRM-endepunkt (default `https://router.project-osrm.org`).
 - `OSRM_PROFILE` – OSRM-profil (`foot` er default og sikrer løpbare ruter på veinettet).
+- `LOCAL_ROUTING_GRAPH_PATH` – sti til forhåndsberegnet graf dersom `ROUTING_PROVIDER=local` (default `server/data/localGraph.json`).
 - `ELEVATION_PROVIDER` – `mock` eller `mapbox` (krever `MAPBOX_TOKEN`).
 - `GEOCODER_PROVIDER` – `mock`, `ors` eller `nominatim`.
 - `DEFAULT_PACE_SECONDS_PER_KM` – brukes til estimering av løpstid.
 
-Uten nøkler bruker systemet OSRMs offentlige ruteringsinstans for veinettfølgende ruter og benytter `foot`-profilen slik at traséene følger løpbare gater og stier. Sett `ROUTING_PROVIDER=mock` for å kjøre helt offline med deterministiske ruter og syntetiske høydeprofiler, eller `ors` dersom du har ORS-nøkkel.
+Uten nøkler bruker systemet OSRMs offentlige ruteringsinstans for veinettfølgende ruter og benytter `foot`-profilen slik at traséene følger løpbare gater og stier. Sett `ROUTING_PROVIDER=mock` for å kjøre helt offline med deterministiske ruter og syntetiske høydeprofiler, `local` for å bruke en forhåndsberegnet fotgjengergraf fra disk, eller `ors` dersom du har ORS-nøkkel.
+
+### Bygge en lokal graf
+
+For å kjøre helt uten eksterne ruteleverandører kan du forhåndsberegne et gangbart veinett fra et GeoJSON-sett (for eksempel et utdrag fra OSM).
+
+```bash
+pnpm build:local-graph path/til/inn.geojson server/data/localGraph.json "Kildebeskrivelse"
+```
+
+Scriptet filtrerer bort motorvei- og service-veier, lager et nodedatasett for hvert kryss og kobler sammen segmenter med målt distanse. Sett deretter `ROUTING_PROVIDER=local` (og eventuelt `LOCAL_ROUTING_GRAPH_PATH` hvis du skrev grafen et annet sted) før du starter serveren.
 
 ## Bygg og drift
 
