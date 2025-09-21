@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controls, ControlsValues, Mode } from "@/components/Controls";
 import { MapView } from "@/components/Map";
 import { RouteSummary } from "@/components/RouteSummary";
 import { RouteDetails } from "@/components/RouteDetails";
-import { ElevationChart } from "@/components/ElevationChart";
+import { RouteExplorer } from "@/components/RouteExplorer";
+import { decodePolyline, encodePolyline } from "@/lib/geo/utils";
+import { cumulativeDistances, interpolatePoint } from "@/lib/geo/distance";
+import { elevationAtDistance } from "@/lib/elevation/profile";
 import type { LatLng, RouteAlternative, RouteResponse } from "@/types/route";
 
 const DEFAULT_VALUES: ControlsValues = {
@@ -28,8 +31,23 @@ export default function HomePage() {
   const [notes, setNotes] = useState<string[]>([]);
   const [mapCenter, setMapCenter] = useState<LatLng | undefined>();
   const [mapBounds, setMapBounds] = useState<[[number, number], [number, number]] | undefined>();
+  const [activeDistance, setActiveDistance] = useState(0);
 
   const selectedRoute = alternatives[selectedIndex];
+
+  const selectedRoutePath = useMemo(
+    () => (selectedRoute ? decodePolyline(selectedRoute.polyline) : []),
+    [selectedRoute],
+  );
+
+  const selectedRouteDistances = useMemo(
+    () => (selectedRoutePath.length > 0 ? cumulativeDistances(selectedRoutePath) : []),
+    [selectedRoutePath],
+  );
+
+  useEffect(() => {
+    setActiveDistance(0);
+  }, [selectedRoute?.polyline]);
 
   const mapRoutes = useMemo(
     () =>
@@ -42,6 +60,76 @@ export default function HomePage() {
       })),
     [alternatives, selectedIndex],
   );
+
+  const totalDistance = selectedRoute?.distanceMeters ?? 0;
+  const clampedDistance = useMemo(() => {
+    if (!selectedRoute || totalDistance <= 0) {
+      return 0;
+    }
+    return Math.min(Math.max(activeDistance, 0), totalDistance);
+  }, [activeDistance, selectedRoute, totalDistance]);
+
+  const activeCoordinate = useMemo(() => {
+    if (!selectedRoute || selectedRoutePath.length === 0 || selectedRouteDistances.length === 0) {
+      return undefined;
+    }
+    return interpolatePoint(selectedRoutePath, selectedRouteDistances, clampedDistance);
+  }, [clampedDistance, selectedRoute, selectedRouteDistances, selectedRoutePath]);
+
+  const activeElevation = useMemo(() => {
+    if (!selectedRoute?.elevationProfile || selectedRoute.elevationProfile.length === 0) {
+      return undefined;
+    }
+    return elevationAtDistance(selectedRoute.elevationProfile, clampedDistance);
+  }, [clampedDistance, selectedRoute]);
+
+  const activeProgress = useMemo(() => {
+    if (!selectedRoute || selectedRoutePath.length === 0 || selectedRouteDistances.length === 0) {
+      return undefined;
+    }
+    if (clampedDistance <= 0) {
+      return undefined;
+    }
+
+    const coords: LatLng[] = [];
+    for (let i = 0; i < selectedRoutePath.length; i += 1) {
+      const distance = selectedRouteDistances[i] ?? 0;
+      const point = selectedRoutePath[i];
+      if (coords.length === 0) {
+        coords.push(point);
+      }
+      if (distance < clampedDistance) {
+        if (i > 0) {
+          coords.push(point);
+        }
+        continue;
+      }
+
+      if (distance === clampedDistance) {
+        coords.push(point);
+      } else if (i > 0) {
+        const prevDistance = selectedRouteDistances[i - 1] ?? 0;
+        const prevPoint = selectedRoutePath[i - 1];
+        const span = distance - prevDistance;
+        const ratio = span <= 0 ? 0 : (clampedDistance - prevDistance) / span;
+        coords.push({
+          lat: prevPoint.lat + (point.lat - prevPoint.lat) * ratio,
+          lng: prevPoint.lng + (point.lng - prevPoint.lng) * ratio,
+        });
+      }
+      break;
+    }
+
+    if (coords.length < 2) {
+      return undefined;
+    }
+
+    const activeRoute = mapRoutes[selectedIndex];
+    return {
+      polyline: encodePolyline(coords),
+      color: activeRoute?.color,
+    };
+  }, [clampedDistance, mapRoutes, selectedIndex, selectedRoute, selectedRouteDistances, selectedRoutePath]);
 
   const requestBody = () => {
     const targetDistanceMeters = Math.round(values.targetDistanceKm * 1000);
@@ -153,7 +241,6 @@ export default function HomePage() {
             onSelect={setSelectedIndex}
           />
           <RouteDetails route={selectedRoute} />
-          <ElevationChart profile={selectedRoute?.elevationProfile} />
         </aside>
 
         <section className="flex-1 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow">
@@ -163,8 +250,23 @@ export default function HomePage() {
               bounds={mapBounds}
               routes={mapRoutes}
               kilometerMarkers={selectedRoute?.kilometerMarkers}
+              activeMarker={
+                activeCoordinate
+                  ? {
+                      coordinate: activeCoordinate,
+                      color: mapRoutes[selectedIndex]?.color,
+                    }
+                  : undefined
+              }
+              activeProgress={activeProgress}
             />
           </div>
+          <RouteExplorer
+            route={selectedRoute}
+            activeDistance={clampedDistance}
+            activeElevation={activeElevation}
+            onDistanceChange={setActiveDistance}
+          />
         </section>
       </div>
     </main>
