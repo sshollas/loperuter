@@ -29,7 +29,10 @@ import { OsrmRoutingProvider } from "./providers/osrm";
 import type { RoutingProvider, RoutingProviderRoute } from "./types";
 
 function createRoutingProvider(): RoutingProvider {
-  const provider = process.env.ROUTING_PROVIDER?.toLowerCase();
+  const provider = process.env.ROUTING_PROVIDER?.toLowerCase() ?? "osrm";
+  if (provider === "mock") {
+    return new MockRoutingProvider();
+  }
   if (provider === "ors") {
     const apiKey = process.env.ORS_API_KEY;
     if (!apiKey) {
@@ -38,9 +41,19 @@ function createRoutingProvider(): RoutingProvider {
     return new OrsRoutingProvider(apiKey);
   }
   if (provider === "osrm") {
-    return new OsrmRoutingProvider();
+    const osrmBaseUrl = process.env.OSRM_BASE_URL;
+    return new OsrmRoutingProvider({
+      baseUrl: osrmBaseUrl,
+      profile: process.env.OSRM_PROFILE,
+    });
   }
-  return new MockRoutingProvider();
+  console.warn(
+    `Ukjent ROUTING_PROVIDER='${provider}', faller tilbake til OSRM`,
+  );
+  return new OsrmRoutingProvider({
+    baseUrl: process.env.OSRM_BASE_URL,
+    profile: process.env.OSRM_PROFILE,
+  });
 }
 
 const DEFAULT_TOLERANCE = 100;

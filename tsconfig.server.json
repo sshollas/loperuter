@@ -12,6 +12,6 @@
     "skipLibCheck": true,
     "declaration": false
   },
-  "include": ["server/**/*.ts", "lib/**/*.ts", "types/**/*.ts"],
-  "exclude": ["node_modules", "dist", "app", "components", "tests", "public"]
+  "include": ["server/**/*.ts", "lib/**/*.ts", "types/**/*.ts", "app/api/**/*.ts"],
+  "exclude": ["node_modules", "dist", "components", "tests", "public"]
 }
