@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.data-cache
+coverage
+__pycache__
+*.pyc
+.DS_Store
+data/nodes.parquet
+data/edges.parquet

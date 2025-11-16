@@ -1,0 +1,8 @@
+[
+  {"id": 1, "osm_id": 1001, "lat": 59.9100, "lon": 10.7500, "elevation_m": 0},
+  {"id": 2, "osm_id": 1002, "lat": 59.9105, "lon": 10.7550, "elevation_m": 0},
+  {"id": 3, "osm_id": 1003, "lat": 59.9110, "lon": 10.7600, "elevation_m": 0},
+  {"id": 4, "osm_id": 1004, "lat": 59.9120, "lon": 10.7550, "elevation_m": 0},
+  {"id": 5, "osm_id": 1005, "lat": 59.9125, "lon": 10.7500, "elevation_m": 0},
+  {"id": 6, "osm_id": 1006, "lat": 59.9115, "lon": 10.7450, "elevation_m": 0}
+]
